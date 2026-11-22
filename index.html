@@ -11,12 +11,16 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="who">
-      <div class="who-name" id="charName">Teëbe Aáe</div>
-      <div class="who-sub" id="roundLabel">Round 1</div>
+    <div class="who-row">
+      <div class="who">
+        <div class="who-name" id="charName">Teëbe Aáe</div>
+        <div class="who-sub" id="roundLabel">Round 1</div>
+      </div>
+      <button class="hp-pill" data-view="sheet" id="hpPill" aria-label="Hit points">HP 44/44</button>
     </div>
     <nav class="tabs" aria-label="Screens">
       <button data-view="combat" class="tab selected">Combat</button>
+      <button data-view="sheet" class="tab">Sheet</button>
       <button data-view="log" class="tab">Log</button>
       <button data-view="settings" class="tab">Settings</button>
     </nav>
@@ -52,6 +56,11 @@
       </div>
     </section>
 
+    <!-- SHEET -->
+    <section id="view-sheet" class="view">
+      <div class="scroll sheet" id="sheetBody"></div>
+    </section>
+
     <!-- LOG -->
     <section id="view-log" class="view">
       <div class="scroll" id="logBody"></div>
@@ -65,6 +74,12 @@
       <div class="scroll">
         <h2>Dice &amp; bonuses</h2>
         <form id="charForm" class="settings-form" autocomplete="off"></form>
+
+        <h2>Combat links to sheet</h2>
+        <div class="settings-form">
+          <label class="check"><input type="checkbox" data-path="autoSpend"> Turning on Hunter's Mark or Favoured Foe uses a slot / use</label>
+          <label class="check"><input type="checkbox" data-path="countArrows"> Each attack uses an arrow</label>
+        </div>
 
         <h2>Backup &amp; sync</h2>
         <p class="hint">Save a backup file to move your character between this phone and your PC, or to keep a copy.</p>

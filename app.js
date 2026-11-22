@@ -1,7 +1,9 @@
 import { DEFAULT_CHARACTER } from './character.js';
 import * as R from './rules.js';
+import * as S from './sheet-data.js';
+import { renderSheet } from './sheet-view.js';
 
-const APP_VERSION = '19.0';
+const APP_VERSION = '19.1';
 const STORE_KEY = 'teebe.v1';
 const $ = (id) => document.getElementById(id);
 const esc = (x) => String(x).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -9,47 +11,52 @@ const clone = (x) => JSON.parse(JSON.stringify(x));
 
 // ---------- State, saving, undo ----------
 let char = clone(DEFAULT_CHARACTER);
+let sheet = clone(S.DEFAULT_SHEET);
 let combat = null;
 let undoStack = [];
 
 function load() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (saved?.character) char = mergeChar(saved.character);
+    if (saved?.character) char = merge(DEFAULT_CHARACTER, saved.character);
+    if (saved?.sheet) sheet = merge(S.DEFAULT_SHEET, saved.sheet);
     if (saved?.combat?.plan) combat = saved.combat;
   } catch { /* storage unavailable: start fresh */ }
   if (!combat) combat = R.newCombat(char);
 }
 
-// Saved characters keep their values but pick up any new default fields.
-function mergeChar(saved) {
-  const out = clone(DEFAULT_CHARACTER);
+// Saved data keeps its values but picks up any new default fields.
+function merge(defaults, saved) {
+  const out = clone(defaults);
   for (const [k, v] of Object.entries(saved)) {
-    out[k] = v && typeof v === 'object' && !Array.isArray(v) ? { ...out[k], ...v } : v;
+    out[k] = v && typeof v === 'object' && !Array.isArray(v) && out[k] && typeof out[k] === 'object' ? { ...out[k], ...v } : v;
   }
   return out;
 }
 
 function save() {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify({ character: char, combat })); }
+  try { localStorage.setItem(STORE_KEY, JSON.stringify({ character: char, sheet, combat })); }
   catch { toast('Could not save — storage unavailable'); }
 }
 
-// Every change to combat goes through here so it can be undone.
-function change(fn, msg) {
-  undoStack.push(clone(combat));
+// Every change to combat or the sheet goes through here so it can be undone.
+// fn may return a message to show.
+function change(fn, msg, { rerender = true } = {}) {
+  undoStack.push(clone({ combat, sheet }));
   if (undoStack.length > 300) undoStack.shift();
-  fn(combat);
+  const out = fn(combat);
   save();
-  render();
-  if (msg) toast(msg);
+  if (rerender) render();
+  const text = [msg, typeof out === 'string' ? out : ''].filter(Boolean).join(' · ');
+  if (text) toast(text);
 }
 
 function undo() {
   if (!undoStack.length) return toast('Nothing to undo');
-  combat = undoStack.pop();
+  ({ combat, sheet } = undoStack.pop());
   save();
   render();
+  toast('Undone');
 }
 
 // ---------- Small helpers ----------
@@ -59,7 +66,7 @@ function toast(msg) {
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+  toastTimer = setTimeout(() => t.classList.remove('show'), msg.length > 40 ? 3000 : 1800);
 }
 
 const ICON = {
@@ -168,7 +175,9 @@ function renderStage() {
 }
 
 function renderCombat() {
-  $('roundLabel').textContent = `Round ${combat.round}` + (combat.ambushTurn ? ' · Ambush turn' : '');
+  const arrows = S.findItem(sheet, 'Arrows');
+  $('roundLabel').textContent = `Round ${combat.round}` + (combat.ambushTurn ? ' · Ambush' : '') +
+    (char.countArrows && arrows ? ` · ${arrows.qty} arrows` : '');
   $('turnTotal').textContent = R.turnTotal(combat);
   const target = combat.targets.find((t) => t.id === combat.targetId);
   $('targetName').textContent = target.name;
@@ -221,9 +230,11 @@ function renderSettings() {
     <label>Sharpshooter +<input type="number" inputmode="numeric" min="0" max="20" data-path="sharpshooterBonus" value="${char.sharpshooterBonus}"></label>
   </fieldset>`;
   $('versionNote').textContent = `App version ${APP_VERSION}`;
+  document.querySelectorAll('#view-settings input[type=checkbox][data-path]').forEach((cb) => { cb.checked = !!char[cb.dataset.path]; });
 }
 
-function setCharField(path, raw) {
+function setCharField(path, raw, el) {
+  if (el?.type === 'checkbox') { char[path] = el.checked; save(); return toast('Saved'); }
   const n = Math.trunc(Number(raw));
   if (!Number.isFinite(n)) return;
   const [a, b] = path.split('.');
@@ -233,7 +244,7 @@ function setCharField(path, raw) {
 }
 
 function exportBackup() {
-  const data = { app: 'teebe', version: 1, exported: new Date().toISOString(), character: char, combat };
+  const data = { app: 'teebe', version: 2, exported: new Date().toISOString(), character: char, sheet, combat };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -250,7 +261,8 @@ async function importBackup(file) {
     const data = JSON.parse(await file.text());
     if (data.app !== 'teebe' || !data.character) throw new Error();
     if (!confirm(`Load backup from ${data.exported?.slice(0, 10) || 'unknown date'}? This replaces what's on this device.`)) return;
-    char = mergeChar(data.character);
+    char = merge(DEFAULT_CHARACTER, data.character);
+    if (data.sheet) sheet = merge(S.DEFAULT_SHEET, data.sheet);
     if (data.combat?.plan) combat = data.combat;
     undoStack = [];
     save();
@@ -263,15 +275,74 @@ async function importBackup(file) {
 
 // ---------- Navigation & events ----------
 let view = 'combat';
+let sheetEdit = false;
 function render() {
   $('charName').textContent = char.name;
-  for (const v of ['combat', 'log', 'settings']) {
+  const hp = sheet.hp;
+  $('hpPill').textContent = `HP ${hp.current}/${hp.max}` + (hp.temp ? ` +${hp.temp}` : '');
+  $('hpPill').classList.toggle('low', hp.current <= hp.max / 4);
+  for (const v of ['combat', 'sheet', 'log', 'settings']) {
     $('view-' + v).classList.toggle('current', v === view);
-    document.querySelector(`[data-view="${v}"]`).classList.toggle('selected', v === view);
+    document.querySelector(`.tab[data-view="${v}"]`).classList.toggle('selected', v === view);
   }
   if (view === 'combat') renderCombat();
+  if (view === 'sheet') $('sheetBody').innerHTML = renderSheet(sheet, sheetEdit);
   if (view === 'log') renderLog();
   if (view === 'settings') renderSettings();
+}
+
+// ---------- Sheet actions ----------
+// Returns false when the button isn't a sheet button, so other handlers can try it.
+const hpAmount = () => Number($('hpAmount')?.value);
+function sheetClick(d) {
+  if (d.hp) {
+    const n = hpAmount();
+    if (d.hp === 'hitdie') return change(() => S.spendHitDie(sheet, n));
+    if (!(n >= 0) || $('hpAmount').value === '') return toast('Type an amount first');
+    return change(() => (d.hp === 'damage' ? S.damage(sheet, n) : d.hp === 'heal' ? S.heal(sheet, n) : S.setTemp(sheet, n)));
+  }
+  if (d.pip) { const [id, i] = d.pip.split(':'); return change(() => S.tapPip(sheet, id, Number(i))); }
+  if (d.rest === 'long') {
+    if (!confirm('Take a long rest? Restores HP, spell slots, Favoured Foe and free casts, and half your hit dice.')) return true;
+    return change(() => S.longRest(sheet));
+  }
+  if (d.cast) { const [l, name] = d.cast.split('|'); return change(() => S.castSpell(sheet, Number(l), name)); }
+  if (d.qty) {
+    const [id, n] = d.qty.split(':');
+    return change(() => { const it = sheet.inventory.find((x) => x.id === id); if (it) it.qty = Math.max(0, it.qty + Number(n)); });
+  }
+  if (d.delItem) {
+    const it = sheet.inventory.find((x) => x.id === d.delItem);
+    return change(() => { sheet.inventory = sheet.inventory.filter((x) => x.id !== d.delItem); }, `Removed ${it?.name} (Undo to bring back)`);
+  }
+  if ('addItem' in d) {
+    const name = $('newItemName').value;
+    if (!name.trim()) return toast('Type an item name');
+    return change(() => S.addItem(sheet, name, Number($('newItemQty').value) || 1, Number($('newItemWt').value) || 0), `Added ${name.trim()}`);
+  }
+  if (d.death) {
+    const [kind, i] = d.death.split(':');
+    return change(() => { const cur = sheet.deathSaves[kind]; sheet.deathSaves[kind] = Number(i) < cur ? Number(i) : Number(i) + 1; });
+  }
+  if ('sheetEdit' in d) { sheetEdit = !sheetEdit; render(); return true; }
+  if (d.cycleSave) return change(() => { sheet.saveProf[d.cycleSave] = sheet.saveProf[d.cycleSave] ? 0 : 1; });
+  if (d.cycleSkill) return change(() => { sheet.skillProf[d.cycleSkill] = ((sheet.skillProf[d.cycleSkill] || 0) + 1) % 3; });
+  return false;
+}
+
+// Typed sheet fields (scores, coins, notes…). Re-render only once focus has left the
+// inputs, so tapping from one box to the next doesn't lose the cursor.
+function setSheetField(el) {
+  const path = el.dataset.sheetPath.split('.');
+  const isText = el.type === 'text' || el.tagName === 'TEXTAREA';
+  const value = isText ? el.value : Math.max(0, Math.trunc(Number(el.value)) || 0);
+  change(() => {
+    let o = sheet;
+    for (const k of path.slice(0, -1)) o = o[k];
+    o[path.at(-1)] = value;
+    if (path[0] === 'hp' && path[1] === 'max') sheet.hp.current = Math.min(sheet.hp.current, value);
+  }, '', { rerender: false });
+  setTimeout(() => { if (!document.activeElement?.matches('input, textarea, select')) render(); }, 0);
 }
 
 const ACTIONS = {
@@ -302,11 +373,27 @@ document.addEventListener('click', (ev) => {
   const b = ev.target.closest('button');
   if (!b) return;
   const d = b.dataset;
-  if (d.view) { view = d.view; render(); return; }
+  if (d.view) { view = d.view; render(); $('view-' + view).querySelector('.scroll')?.scrollTo(0, 0); return; }
   if (d.action) return ACTIONS[d.action]?.();
+  if (sheetClick(d) !== false) return;
   if (d.toggle === 'ambush') return change((s) => R.setAmbush(s, !s.ambushTurn));
-  if (d.toggle) return change((s) => R.toggle(s, char, d.toggle));
-  if (d.declare) return change((s) => R.declare(s, char, d.declare));
+  if (d.toggle) {
+    return change((s) => {
+      R.toggle(s, char, d.toggle);
+      if (!char.autoSpend || !s.toggles[d.toggle]) return '';
+      if (d.toggle === 'hm') return S.castSpell(sheet, 1, "Hunter's Mark");
+      if (d.toggle === 'ff') return S.useResource(sheet, 'ff', 'Favoured Foe');
+      return '';
+    });
+  }
+  if (d.declare) {
+    return change((s) => {
+      const before = s.index + (s.pending ? 0.5 : 0);
+      R.declare(s, char, d.declare);
+      const acted = s.index + (s.pending ? 0.5 : 0) !== before;
+      return acted && char.countArrows ? S.useArrow(sheet) : '';
+    });
+  }
   if (d.die) {
     if (navigator.vibrate) navigator.vibrate(12);
     return change((s) => R.enterDie(s, Number(d.die)));
@@ -320,7 +407,8 @@ document.addEventListener('click', (ev) => {
 
 document.addEventListener('change', (ev) => {
   const p = ev.target.dataset?.path;
-  if (p) setCharField(p, ev.target.value);
+  if (p) setCharField(p, ev.target.value, ev.target);
+  if (ev.target.dataset?.sheetPath) setSheetField(ev.target);
   if (ev.target.id === 'importFile' && ev.target.files[0]) {
     importBackup(ev.target.files[0]);
     ev.target.value = '';

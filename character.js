@@ -21,4 +21,8 @@ export const DEFAULT_CHARACTER = {
 
   // Sharpshooter: -5 to hit, +10 damage
   sharpshooterBonus: 10,
+
+  // Links to the character sheet (undo reverses them)
+  autoSpend: true,     // Hunter's Mark on -> use a spell slot; Favoured Foe on -> use a charge
+  countArrows: true,   // every attack (hit or miss) uses one arrow
 };

@@ -2,8 +2,11 @@ import { DEFAULT_CHARACTER } from './character.js';
 import * as R from './rules.js';
 import * as S from './sheet-data.js';
 import { renderSheet } from './sheet-view.js';
+import { createSync } from './sync.js';
+import * as L from './levelup.js';
+import { renderLevelUp } from './levelup-view.js';
 
-const APP_VERSION = '19.1';
+const APP_VERSION = '19.2';
 const STORE_KEY = 'teebe.v1';
 const $ = (id) => document.getElementById(id);
 const esc = (x) => String(x).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -19,10 +22,16 @@ function load() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY));
     if (saved?.character) char = merge(DEFAULT_CHARACTER, saved.character);
-    if (saved?.sheet) sheet = merge(S.DEFAULT_SHEET, saved.sheet);
+    if (saved?.sheet) sheet = migrateSheet(merge(S.DEFAULT_SHEET, saved.sheet));
     if (saved?.combat?.plan) combat = saved.combat;
   } catch { /* storage unavailable: start fresh */ }
   if (!combat) combat = R.newCombat(char);
+}
+
+// Older saves stored weapons as fixed text; switch them to the calculated format.
+function migrateSheet(sh) {
+  if (!Array.isArray(sh.weapons) || sh.weapons.some((w) => !w.die)) sh.weapons = clone(S.DEFAULT_SHEET.weapons);
+  return sh;
 }
 
 // Saved data keeps its values but picks up any new default fields.
@@ -34,15 +43,42 @@ function merge(defaults, saved) {
   return out;
 }
 
-function save() {
+function save({ fromSync = false } = {}) {
   try { localStorage.setItem(STORE_KEY, JSON.stringify({ character: char, sheet, combat })); }
   catch { toast('Could not save — storage unavailable'); }
+  if (!fromSync) sync?.markDirty();
+}
+
+// ---------- Sync ----------
+let sync = null;
+const when = (iso) => (iso ? new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'unknown time');
+function setupSync() {
+  sync = createSync({
+    getData: () => ({ app: 'teebe', version: 2, character: char, sheet, combat }),
+    applyData: (d) => {
+      if (d.character) char = merge(DEFAULT_CHARACTER, d.character);
+      if (d.sheet) sheet = migrateSheet(merge(S.DEFAULT_SHEET, d.sheet));
+      if (d.combat?.plan) combat = d.combat;
+      undoStack = [];
+      save({ fromSync: true });
+      render();
+      toast(`Updated from ${d.device || 'other device'}`);
+    },
+    confirmConflict: (remote, first) => confirm(first
+      ? `GitHub already has a saved Teëbe (from ${remote.device || 'another device'}, ${when(remote.updatedAt)}).\n\nOK = keep THIS device's Teëbe and replace the saved one.\nCancel = load the saved one onto this device.`
+      : `Teëbe was changed on both this device and ${remote.device || 'another device'} since the last sync.\n\nOK = keep THIS device's version.\nCancel = use ${remote.device || 'the other'}'s version (${when(remote.updatedAt)}).`),
+    onStatus: (st) => {
+      for (const id of ['syncDot', 'syncDot2']) $(id).className = 'sync-dot ' + st.kind;
+      $('syncText').textContent = st.text;
+      if (st.kind === 'error') toast('Sync: ' + st.text);
+    },
+  });
 }
 
 // Every change to combat or the sheet goes through here so it can be undone.
 // fn may return a message to show.
 function change(fn, msg, { rerender = true } = {}) {
-  undoStack.push(clone({ combat, sheet }));
+  undoStack.push(clone({ combat, sheet, char }));
   if (undoStack.length > 300) undoStack.shift();
   const out = fn(combat);
   save();
@@ -53,7 +89,7 @@ function change(fn, msg, { rerender = true } = {}) {
 
 function undo() {
   if (!undoStack.length) return toast('Nothing to undo');
-  ({ combat, sheet } = undoStack.pop());
+  ({ combat, sheet, char } = undoStack.pop());
   save();
   render();
   toast('Undone');
@@ -78,6 +114,7 @@ const ICON = {
   miss: 'icons/miss.svg',
 };
 const SS_SVG = `<svg viewBox="0 0 64 64" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="32" cy="32" r="22"/><circle cx="32" cy="32" r="13"/><circle cx="32" cy="32" r="4"/><path d="M32 32 54 10M48 10h6v6"/></g></svg>`;
+const SURGE_SVG = `<svg viewBox="0 0 64 64" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"><path d="M36 6 16 36h14l-4 22 22-32H34z"/></g></svg>`;
 const img = (src) => `<img src="${src}" alt="">`;
 
 function breakdown(e) {
@@ -104,6 +141,9 @@ function renderToggles() {
     { key: 'ss', label: 'Sharp-<br>shooter', icon: SS_SVG, on: t.ss, cls: 'c-ss' },
     { key: 'ambush', label: 'Dread<br>Ambush', icon: img(ICON.ambush), on: combat.ambushTurn, cls: 'c-da' },
   ];
+  const surge = S.resource(sheet, 'surge');
+  if (surge) items.push({ key: 'surge', label: `Action<br>Surge ${S.left(surge)}`, icon: SURGE_SVG, on: combat.surgedRound === combat.round, cls: 'c-surge' });
+  $('toggles').style.gridTemplateColumns = `repeat(${items.length}, 1fr)`;
   $('toggles').innerHTML = items.map((i) =>
     `<button class="toggle ${i.cls} ${i.on ? 'on' : ''}" data-toggle="${i.key}" aria-pressed="${i.on}">
        <span class="toggle-icon">${i.icon}</span><span class="toggle-label">${i.label}</span>
@@ -231,6 +271,25 @@ function renderSettings() {
   </fieldset>`;
   $('versionNote').textContent = `App version ${APP_VERSION}`;
   document.querySelectorAll('#view-settings input[type=checkbox][data-path]').forEach((cb) => { cb.checked = !!char[cb.dataset.path]; });
+  const sc = sync.config;
+  $('syncSetup').hidden = sc.connected;
+  $('syncConnected').hidden = !sc.connected;
+  if (document.activeElement !== $('syncRepo')) $('syncRepo').value = sc.repo;
+  if (document.activeElement !== $('syncDevice')) $('syncDevice').value = sc.device;
+}
+
+async function syncConnect() {
+  const token = $('syncToken').value;
+  if (!token.trim()) return toast('Paste your token first');
+  toast('Connecting…');
+  try {
+    await sync.connect(token, $('syncRepo').value);
+    $('syncToken').value = '';
+    render();
+    toast('Connected — syncing automatically');
+  } catch (e) {
+    toast('Could not connect: ' + (e.status === 404 ? 'repo not found or token has no access to it' : e.message));
+  }
 }
 
 function setCharField(path, raw, el) {
@@ -281,12 +340,13 @@ function render() {
   const hp = sheet.hp;
   $('hpPill').textContent = `HP ${hp.current}/${hp.max}` + (hp.temp ? ` +${hp.temp}` : '');
   $('hpPill').classList.toggle('low', hp.current <= hp.max / 4);
-  for (const v of ['combat', 'sheet', 'log', 'settings']) {
+  for (const v of ['combat', 'sheet', 'levelup', 'log', 'settings']) {
     $('view-' + v).classList.toggle('current', v === view);
-    document.querySelector(`.tab[data-view="${v}"]`).classList.toggle('selected', v === view);
+    document.querySelector(`.tab[data-view="${v}"]`)?.classList.toggle('selected', v === view || (v === 'sheet' && view === 'levelup'));
   }
   if (view === 'combat') renderCombat();
   if (view === 'sheet') $('sheetBody').innerHTML = renderSheet(sheet, sheetEdit);
+  if (view === 'levelup') $('levelUpBody').innerHTML = renderLevelUp(sheet, char, lu);
   if (view === 'log') renderLog();
   if (view === 'settings') renderSettings();
 }
@@ -302,6 +362,7 @@ function sheetClick(d) {
     return change(() => (d.hp === 'damage' ? S.damage(sheet, n) : d.hp === 'heal' ? S.heal(sheet, n) : S.setTemp(sheet, n)));
   }
   if (d.pip) { const [id, i] = d.pip.split(':'); return change(() => S.tapPip(sheet, id, Number(i))); }
+  if (d.rest === 'short') return change(() => S.shortRest(sheet));
   if (d.rest === 'long') {
     if (!confirm('Take a long rest? Restores HP, spell slots, Favoured Foe and free casts, and half your hit dice.')) return true;
     return change(() => S.longRest(sheet));
@@ -328,6 +389,37 @@ function sheetClick(d) {
   if (d.cycleSave) return change(() => { sheet.saveProf[d.cycleSave] = sheet.saveProf[d.cycleSave] ? 0 : 1; });
   if (d.cycleSkill) return change(() => { sheet.skillProf[d.cycleSkill] = ((sheet.skillProf[d.cycleSkill] || 0) + 1) % 3; });
   return false;
+}
+
+// ---------- Level up ----------
+let lu = null;
+const freshLevelUp = () => ({ cls: null, hpRoll: null, hpMode: null, asi: {}, style: '', subclass: '', spell: {} });
+function levelUpClick(d) {
+  if (!lu) return false;
+  if (d.luClass) { lu = { ...freshLevelUp(), cls: d.luClass }; }
+  else if (d.luAsi) { lu.asi = { mode: d.luAsi }; }
+  else if (d.luHp) { lu.hpMode = d.luHp; if (d.luHp === 'avg') lu.hpRoll = null; }
+  else if (d.luRoll) { lu.hpRoll = Number(d.luRoll); lu.hpMode = 'roll'; }
+  else return false;
+  render();
+  return true;
+}
+function levelUpField(el) {
+  const [a, b] = el.dataset.lu.split('.');
+  if (b) lu[a] = { ...lu[a], [b]: el.value }; else lu[a] = el.value;
+  setTimeout(() => { if (!document.activeElement?.matches('input[type=text]')) render(); }, 0);
+}
+function levelUpConfirm() {
+  const lvl = L.nextLevelFor(sheet, lu.cls);
+  const missing = L.missingChoice(lu.cls, lvl, lu);
+  if (missing) return toast(missing);
+  let result;
+  change(() => { result = L.applyLevelUp(sheet, char, lu); }, '', { rerender: false });
+  lu = null;
+  view = 'sheet';
+  render();
+  $('sheetBody').scrollTo(0, 0);
+  toast(`Level ${sheet.level}! ${result.lines.length - 1} changes — Undo reverses it`);
 }
 
 // Typed sheet fields (scores, coins, notes…). Re-render only once focus has left the
@@ -360,6 +452,16 @@ const ACTIONS = {
     render();
   },
   exportBackup,
+  syncConnect,
+  openLevelUp: () => { lu = freshLevelUp(); view = 'levelup'; render(); $('levelUpBody').scrollTo(0, 0); },
+  levelUpCancel: () => { lu = null; view = 'sheet'; render(); },
+  levelUpConfirm,
+  syncNow: () => sync.sync().then(() => toast(sync.state().text)),
+  syncDisconnect: () => {
+    if (!confirm('Disconnect sync on this device? Your data stays here; it just stops syncing.')) return;
+    sync.disconnect();
+    render();
+  },
   resetCharacter: () => {
     if (!confirm('Restore all dice and bonuses to the defaults from your character sheet?')) return;
     char = clone(DEFAULT_CHARACTER);
@@ -375,7 +477,18 @@ document.addEventListener('click', (ev) => {
   const d = b.dataset;
   if (d.view) { view = d.view; render(); $('view-' + view).querySelector('.scroll')?.scrollTo(0, 0); return; }
   if (d.action) return ACTIONS[d.action]?.();
+  if (levelUpClick(d)) return;
   if (sheetClick(d) !== false) return;
+  if (d.toggle === 'surge') {
+    return change((s) => {
+      const r = S.resource(sheet, 'surge');
+      if (!r || S.left(r) < 1) return 'No Action Surge left — recharges on a short rest';
+      if (s.surgedRound === s.round) return 'Already surged this turn';
+      r.used++;
+      R.actionSurge(s, char);
+      return 'Action Surge! 2 more attacks added';
+    });
+  }
   if (d.toggle === 'ambush') return change((s) => R.setAmbush(s, !s.ambushTurn));
   if (d.toggle) {
     return change((s) => {
@@ -409,6 +522,8 @@ document.addEventListener('change', (ev) => {
   const p = ev.target.dataset?.path;
   if (p) setCharField(p, ev.target.value, ev.target);
   if (ev.target.dataset?.sheetPath) setSheetField(ev.target);
+  if (ev.target.dataset?.lu && lu) levelUpField(ev.target);
+  if (ev.target.id === 'syncDevice') { sync.setDevice(ev.target.value); toast('Device name saved'); }
   if (ev.target.id === 'importFile' && ev.target.files[0]) {
     importBackup(ev.target.files[0]);
     ev.target.value = '';
@@ -416,7 +531,9 @@ document.addEventListener('change', (ev) => {
 });
 
 load();
+setupSync();
 render();
+sync.sync();
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});

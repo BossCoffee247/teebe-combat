@@ -91,6 +91,8 @@ main { flex: 1; min-height: 0; display: flex; }
 .toggle.c-ff.on { background: var(--ff); border-color: #c86890; }
 .toggle.c-ss.on { background: var(--ss); border-color: #6f93dc; }
 .toggle.c-da.on { background: var(--da); border-color: #e0ad55; }
+.toggle.c-surge.on { background: #6a3fa0; border-color: #a57ae0; }
+.toggle.c-surge .toggle-label { font-size: 10px; }
 
 /* ---------- Turn list ---------- */
 .turn { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -220,6 +222,22 @@ input:focus, select:focus { outline: none; border-color: var(--gold); }
 
 .check { display: flex; gap: 10px; align-items: center; background: var(--surface); border-radius: var(--radius); padding: 12px; font-size: 14px; }
 .check input { width: 22px; height: 22px; flex: none; accent-color: var(--gold); }
+
+/* ---------- Sync ---------- */
+.sync-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; margin-left: 2px; background: transparent; }
+.sync-dot.ok { background: #4fae7d; }
+.sync-dot.pending { background: #e0ad55; }
+.sync-dot.error { background: #e0605b; }
+.sync-card { display: flex; flex-direction: column; gap: 10px; }
+.sync-card [hidden] { display: none !important; }
+#syncSetup, #syncConnected { display: flex; flex-direction: column; gap: 8px; }
+.sync-status { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.sync-status .sync-dot { width: 10px; height: 10px; margin: 0; background: var(--line); }
+.sync-status .sync-dot.ok { background: #4fae7d; }
+.sync-status .sync-dot.pending { background: #e0ad55; }
+.sync-status .sync-dot.error { background: #e0605b; }
+.sync-card .hint { margin: 0; }
+.sync-card .mini-field input { font-size: 15px; }
 
 /* ---------- Sheet ---------- */
 .sheet { display: flex; flex-direction: column; gap: 10px; scroll-behavior: smooth; }
@@ -352,6 +370,39 @@ textarea {
   border: 1.5px solid var(--line); border-radius: 10px; padding: 10px; resize: vertical; user-select: text;
 }
 textarea:focus { outline: none; border-color: var(--gold); }
+
+.btn-pair { display: flex; gap: 6px; }
+.chip-btn.gold { border-color: var(--gold); color: var(--gold); }
+.id-card { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.id-class { font-weight: 800; font-size: 15px; }
+.id-sub { font-size: 12.5px; color: var(--muted); }
+
+/* ---------- Level up ---------- */
+.levelup { display: flex; flex-direction: column; gap: 10px; }
+.levelup > * { flex-shrink: 0; }
+.lu-head { padding: 4px 2px 0; }
+.lu-title { font-size: 18px; font-weight: 800; }
+.lu-classes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.lu-class {
+  text-align: left; background: var(--surface); border: 1.5px solid var(--line); border-radius: var(--radius);
+  padding: 12px; display: flex; flex-direction: column; gap: 4px;
+}
+.lu-class.on { border-color: var(--gold); background: var(--surface-2); }
+.lu-class-name { font-size: 19px; font-weight: 800; }
+.lu-class.on .lu-class-name { color: var(--gold); }
+.lu-class-gains { font-size: 12.5px; color: var(--muted); }
+.lu-block { background: var(--surface); border-radius: var(--radius); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.lu-block .card-label { margin: 0; }
+.seg { display: flex; background: var(--surface-2); border-radius: 10px; padding: 3px; gap: 3px; }
+.seg button { flex: 1; padding: 9px 4px; border-radius: 8px; font-size: 13.5px; font-weight: 700; color: var(--muted); }
+.seg button.on { background: var(--gold); color: #1a1408; }
+.lu-spell { display: grid; grid-template-columns: 1fr 110px; gap: 6px; }
+.lu-keys .key { min-height: 48px; font-size: 22px; }
+.key.picked { background: var(--gold); color: #1a1408; border-color: var(--gold); }
+.lu-preview ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.lu-actions { padding-bottom: 8px; }
+.btn.primary { background: var(--gold); color: #1a1408; border-color: var(--gold); }
+.btn:disabled { background: var(--surface-2); color: var(--muted); border-color: var(--line); opacity: 1; font-size: 13px; }
 
 /* ---------- Toast ---------- */
 .toast {

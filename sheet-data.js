@@ -24,6 +24,9 @@ const item = (name, qty, weight, note = '') => ({ id: name.toLowerCase().replace
 
 export const DEFAULT_SHEET = {
   level: 5,
+  classes: { ranger: 5, fighter: 0 },
+  fighterSubclass: '',
+  fightingStyles: ['Archery'],
   classLine: 'Ranger 5 · Gloom Stalker',
   race: 'Winged Feral Tiefling',
   background: 'Custom Spy',
@@ -61,10 +64,11 @@ export const DEFAULT_SHEET = {
     { level: 2, name: 'Rope Trick', tags: 'Action · Gloom Stalker', note: 'Always prepared.' },
   ],
 
+  // To-hit and damage are calculated from DEX, proficiency, magic bonus and fighting style.
   weapons: [
-    { name: '+1 Longbow', hit: '+9', dmg: '1d8+4 piercing', note: '150/600 ft · magical' },
-    { name: 'Longbow (Sharpshooter)', hit: '+4', dmg: '1d8+14 piercing', note: '−5 / +10' },
-    { name: 'Shortsword', hit: '+6', dmg: '1d6+3 piercing', note: 'Finesse, light' },
+    { name: '+1 Longbow', ab: 'dex', magic: 1, ranged: true, die: '1d8', type: 'piercing', note: '150/600 ft · magical' },
+    { name: '+1 Longbow · Sharpshooter', ab: 'dex', magic: 1, ranged: true, ss: true, die: '1d8', type: 'piercing', note: '−5 to hit, +10 damage' },
+    { name: 'Shortsword', ab: 'dex', magic: 0, ranged: false, die: '1d6', type: 'piercing', note: 'Finesse, light' },
   ],
 
   coins: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
@@ -108,6 +112,9 @@ export const spellDC = (sh) => 8 + sh.profBonus + abilityMod(sh, sh.spellAbility
 export const spellAttack = (sh) => sh.profBonus + abilityMod(sh, sh.spellAbility);
 export const carried = (sh) => sh.inventory.reduce((a, i) => a + (Number(i.qty) || 0) * (Number(i.weight) || 0), 0);
 export const capacity = (sh) => 15 * sh.abilities.str;
+export const weaponHit = (sh, w) => abilityMod(sh, w.ab) + sh.profBonus + (w.magic || 0)
+  + (w.ranged && sh.fightingStyles?.includes('Archery') ? 2 : 0) - (w.ss ? 5 : 0);
+export const weaponDamage = (sh, w) => `${w.die}${fmt(abilityMod(sh, w.ab) + (w.magic || 0) + (w.ss ? 10 : 0))} ${w.type}`;
 export const resource = (sh, id) => sh.resources.find((r) => r.id === id);
 export const left = (r) => (r ? r.max - r.used : 0);
 
@@ -151,6 +158,12 @@ export function longRest(sh) {
   sh.hitDice.remaining = Math.min(sh.hitDice.max, sh.hitDice.remaining + Math.max(1, Math.floor(sh.hitDice.max / 2)));
   for (const r of sh.resources) r.used = 0;
   return 'Long rest — HP, slots and uses restored';
+}
+
+export function shortRest(sh) {
+  const back = sh.resources.filter((r) => r.reset === 'short' && r.used > 0);
+  for (const r of back) r.used = 0;
+  return back.length ? `Short rest — ${back.map((r) => r.name).join(', ')} restored` : 'Short rest — spend hit dice below if needed';
 }
 
 // Tap pip number i (0-based): tapping an unused pip uses up to it; tapping a used one frees it.

@@ -44,7 +44,7 @@ function vitals(sh) {
 function resources(sh) {
   return `<section class="card" id="sec-res">
     <div class="card-head"><span class="card-label">Slots &amp; uses</span>
-      <button class="chip-btn" data-rest="long">Long rest</button></div>
+      <span class="btn-pair"><button class="chip-btn" data-rest="short">Short rest</button><button class="chip-btn" data-rest="long">Long rest</button></span></div>
     ${sh.resources.map(pips).join('')}
     <div class="res-row">
       <div class="res-name">Hit dice <small>d${sh.hitDice.die}</small></div>
@@ -102,7 +102,14 @@ function skills(sh, edit) {
 function attacks(sh) {
   return `<section class="card" id="sec-attacks">
     <div class="card-label">Attacks</div>
-    ${sh.weapons.map((w) => `<div class="atk-row"><span class="atk-name">${esc(w.name)}<small>${esc(w.note)}</small></span><b>${esc(w.hit)}</b><span class="atk-dmg">${esc(w.dmg)}</span></div>`).join('')}
+    ${sh.weapons.map((w) => `<div class="atk-row"><span class="atk-name">${esc(w.name)}<small>${esc(w.note)}</small></span><b>${S.fmt(S.weaponHit(sh, w))}</b><span class="atk-dmg">${esc(S.weaponDamage(sh, w))}</span></div>`).join('')}
+  </section>`;
+}
+
+function identity(sh) {
+  return `<section class="card id-card">
+    <div><div class="id-class">${esc(sh.classLine)}</div><div class="id-sub">Level ${sh.level} · ${esc(sh.race)}</div></div>
+    <button class="chip-btn gold" data-action="openLevelUp">Level up</button>
   </section>`;
 }
 
@@ -170,5 +177,5 @@ export function renderSheet(sh, edit) {
       <a href="#sec-spells">Spells</a><a href="#sec-gear">Gear</a>
       <button class="jump-undo" data-action="undo" aria-label="Undo">↶ Undo</button>
     </div>` +
-    vitals(sh) + resources(sh) + stats(sh, edit) + skills(sh, edit) + attacks(sh) + spells(sh) + inventory(sh, edit) + features(sh) + notes(sh);
+    identity(sh) + vitals(sh) + resources(sh) + stats(sh, edit) + skills(sh, edit) + attacks(sh) + spells(sh) + inventory(sh, edit) + features(sh) + notes(sh);
 }

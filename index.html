@@ -13,7 +13,7 @@
   <header class="topbar">
     <div class="who-row">
       <div class="who">
-        <div class="who-name" id="charName">Teëbe Aáe</div>
+        <div class="who-name"><span id="charName">Teëbe Aáe</span> <span class="sync-dot" id="syncDot" title="Sync status"></span></div>
         <div class="who-sub" id="roundLabel">Round 1</div>
       </div>
       <button class="hp-pill" data-view="sheet" id="hpPill" aria-label="Hit points">HP 44/44</button>
@@ -61,6 +61,11 @@
       <div class="scroll sheet" id="sheetBody"></div>
     </section>
 
+    <!-- LEVEL UP (opened from the Sheet) -->
+    <section id="view-levelup" class="view">
+      <div class="scroll levelup" id="levelUpBody"></div>
+    </section>
+
     <!-- LOG -->
     <section id="view-log" class="view">
       <div class="scroll" id="logBody"></div>
@@ -81,8 +86,26 @@
           <label class="check"><input type="checkbox" data-path="countArrows"> Each attack uses an arrow</label>
         </div>
 
-        <h2>Backup &amp; sync</h2>
-        <p class="hint">Save a backup file to move your character between this phone and your PC, or to keep a copy.</p>
+        <h2>Sync between devices</h2>
+        <div class="card sync-card">
+          <div class="sync-status"><span class="sync-dot" id="syncDot2"></span><span id="syncText">Not connected</span></div>
+          <div id="syncSetup">
+            <p class="hint">Paste a GitHub token that can read and write your private <b>teebe-data</b> repo. Do this once on each device (phone first, then PC).</p>
+            <label class="mini-field">Data repo<input id="syncRepo" type="text" autocomplete="off" spellcheck="false"></label>
+            <label class="mini-field">Token<input id="syncToken" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…"></label>
+            <button class="btn" data-action="syncConnect">Connect</button>
+          </div>
+          <div id="syncConnected">
+            <label class="mini-field">This device's name<input id="syncDevice" type="text" autocomplete="off"></label>
+            <div class="btn-row">
+              <button class="btn" data-action="syncNow">Sync now</button>
+              <button class="btn danger" data-action="syncDisconnect">Disconnect</button>
+            </div>
+          </div>
+        </div>
+
+        <h2>Backup file</h2>
+        <p class="hint">Save a copy of everything as a file, or load one back in.</p>
         <div class="btn-row">
           <button class="btn" data-action="exportBackup">Save backup file</button>
           <label class="btn">Load backup file<input type="file" id="importFile" accept=".json,application/json" hidden></label>

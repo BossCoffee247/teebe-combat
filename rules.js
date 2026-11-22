@@ -148,6 +148,13 @@ export function setAmbush(s, on) {
   }
 }
 
+// Action Surge: a second Attack action this turn (Extra Attack applies again).
+export function actionSurge(s, char) {
+  const n = Math.max(1, Number(char.attacksPerTurn) || 1);
+  for (let i = 1; i <= n; i++) s.plan.push({ label: 'Surge ' + i, kind: 'normal' });
+  s.surgedRound = s.round;
+}
+
 export function addAttack(s) {
   s.plan.push({ label: 'Extra attack', kind: 'normal' });
 }

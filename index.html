@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0d1513">
+  <title>Teëbe Combat</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/app-icon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="who">
+      <div class="who-name" id="charName">Teëbe Aáe</div>
+      <div class="who-sub" id="roundLabel">Round 1</div>
+    </div>
+    <nav class="tabs" aria-label="Screens">
+      <button data-view="combat" class="tab selected">Combat</button>
+      <button data-view="log" class="tab">Log</button>
+      <button data-view="settings" class="tab">Settings</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- COMBAT -->
+    <section id="view-combat" class="view current">
+      <div class="totals">
+        <div class="total-main">
+          <div class="total-label">This turn</div>
+          <div class="total-value" id="turnTotal">0</div>
+        </div>
+        <div class="total-side">
+          <button class="target-btn" data-action="newTarget" title="Start counting damage for a new target">
+            <img src="icons/change_target.svg" alt="">
+            <span>New target</span>
+          </button>
+          <div class="target-line"><span id="targetName">Target 1</span> <b id="targetTotal">0</b></div>
+        </div>
+      </div>
+
+      <div class="toggles" id="toggles"></div>
+
+      <ol class="turn" id="turnList"></ol>
+
+      <div class="stage" id="stage"></div>
+
+      <div class="bottombar">
+        <button class="bar-btn" data-action="undo"><img src="icons/undo.svg" alt="">Undo</button>
+        <button class="bar-btn" data-action="addAttack"><span class="plus">+</span>Attack</button>
+        <button class="bar-btn primary" data-action="nextTurn"><img src="icons/next_turn.svg" alt="">Next turn</button>
+      </div>
+    </section>
+
+    <!-- LOG -->
+    <section id="view-log" class="view">
+      <div class="scroll" id="logBody"></div>
+      <div class="bottombar">
+        <button class="bar-btn danger" data-action="newCombat">New combat</button>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="view-settings" class="view">
+      <div class="scroll">
+        <h2>Dice &amp; bonuses</h2>
+        <form id="charForm" class="settings-form" autocomplete="off"></form>
+
+        <h2>Backup &amp; sync</h2>
+        <p class="hint">Save a backup file to move your character between this phone and your PC, or to keep a copy.</p>
+        <div class="btn-row">
+          <button class="btn" data-action="exportBackup">Save backup file</button>
+          <label class="btn">Load backup file<input type="file" id="importFile" accept=".json,application/json" hidden></label>
+        </div>
+
+        <h2>Reset</h2>
+        <div class="btn-row">
+          <button class="btn danger" data-action="resetCharacter">Restore default dice</button>
+        </div>
+        <p class="hint" id="versionNote"></p>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

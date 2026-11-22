@@ -1,6 +1,6 @@
 // Offline support. Network first (so updates show up straight away when online),
 // falling back to the cached copy at the table with no signal.
-const CACHE = 'teebe-v19.1';
+const CACHE = 'teebe-v19.1b';
 const FILES = [
   './', './index.html', './styles.css', './app.js', './rules.js', './character.js', './manifest.webmanifest',
   './sheet-data.js', './sheet-view.js',
@@ -24,7 +24,9 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request)
+    // no-cache: always check with GitHub for a newer copy (cheap, uses ETags), so an
+    // update never leaves a mix of old and new files from the browser's 10-minute cache.
+    fetch(e.request, { cache: 'no-cache' })
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(e.request, copy));
